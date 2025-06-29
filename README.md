@@ -1,6 +1,6 @@
-# Triton-Jina-v3-TRT Setup Guide
+# Triton-Jina-v3-ONNX Setup Guide
 
-This guide provides detailed instructions for setting up the Triton Inference Server with Jina Embeddings v3 using NVIDIA's TensorRT (TRT) on a Linux system with Docker and NVIDIA GPUs. Follow these steps to install prerequisites, authenticate with NVIDIA NGC, download model weights, configure the Triton model repository, and manage the service using `systemd`.
+This guide provides detailed instructions for setting up the Triton Inference Server with Jina Embeddings v3 using the ONNX runtime on a Linux system with Docker and NVIDIA GPUs. Follow these steps to install prerequisites, authenticate with NVIDIA NGC, download model weights, configure the Triton model repository, and manage the service using `systemd`.
 
 - [**Installation**](#installation)
     - [Step 1: System Prerequisites](#step-1-system-prerequisites)
@@ -24,7 +24,7 @@ This guide provides detailed instructions for setting up the Triton Inference Se
 
 ## Installation
 
-This section guides you through setting up the Triton Inference Server with Jina Embeddings v3, optimized for NVIDIA GPUs using TensorRT.
+This section guides you through setting up the Triton Inference Server with Jina Embeddings v3, optimized for NVIDIA GPUs using the ONNX runtime.
 
 ---
 
@@ -248,13 +248,13 @@ WantedBy=multi-user.target
 
 **Finding Placeholders:**
 - `<your_username>`: Run `whoami` to get your username.
-- `<full_path_to_your_project>`: Run `pwd` in your project directory (e.g., `~/Triton-Jina-v3-TRT`).
+- `<full_path_to_your_project>`: Run `pwd` in your project directory (e.g., `~/Triton-Jina-v3-ONNX`).
 - `<your_conda_install_dir>`: Typically `anaconda3` or `miniconda3` in your home directory.
 - `<your_conda_env_name>`: The name of your conda environment (e.g., `triton`).
 
 **Example Filled-Out File:**
 
-For a user `ansary`, project directory `/home/ansary/Triton-Jina-v3-TRT`, and conda environment `triton`, the file would look like:
+For a user `ansary`, project directory `/home/ansary/Triton-Jina-v3-ONNX`, and conda environment `triton`, the file would look like:
 
 ```ini
 [Unit]
@@ -264,9 +264,9 @@ After=network.target docker.service
 [Service]
 User=ansary
 Group=ansary
-WorkingDirectory=/home/ansary/Triton-Jina-v3-TRT
+WorkingDirectory=/home/ansary/Triton-Jina-v3-ONNX
 Environment="PATH=/home/ansary/miniconda3/envs/triton/bin:/usr/bin:/bin"
-ExecStart=/bin/bash /home/ansary/Triton-Jina-v3-TRT/run.sh
+ExecStart=/bin/bash /home/ansary/Triton-Jina-v3-ONNX/run.sh
 Restart=on-failure
 RestartSec=10
 
@@ -323,4 +323,4 @@ Manage the service and monitor its logs with the following commands:
 
 ---
 
-This guide provides a comprehensive setup for running the Triton Inference Server with Jina Embeddings v3. Save this markdown file and execute the steps in order to deploy the service successfully.
+This guide provides a comprehensive setup for running the Triton Inference Server with Jina Embeddings v3 using the ONNX runtime. Save this markdown file and execute the steps in order to deploy the service successfully.

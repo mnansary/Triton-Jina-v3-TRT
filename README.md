@@ -1,31 +1,46 @@
-# Triton-Jina-v3-TRT
+# Triton-Jina-v3-TRT Setup Guide
+
+This guide provides detailed instructions for setting up the Triton Inference Server with Jina Embeddings v3 using NVIDIA's TensorRT (TRT) on a Linux system with Docker and NVIDIA GPUs. Follow these steps to install prerequisites, authenticate with NVIDIA NGC, download model weights, configure the Triton model repository, and manage the service using `systemd`.
 
 - [**Installation**](#installation)
-    -   [**Step 1: System Prerequisites**](#step-1-system-prerequisites)
-        -   [1.1 Install Docker](#11-install-docker)
-        -   [1.2 Install NVIDIA Container Toolkit](#12-install-nvidia-container-toolkit)
-    -   [**Step 2: NVIDIA NGC Authentication**](#step-2-nvidia-ngc-authentication)
-        -   [2.1 Get Your NGC API Key](#21-get-your-ngc-api-key)
-        -   [2.2 Log in via Docker](#22-log-in-via-docker)
-    -   [**Step 3: Download Triton Server Image**](#step-3-download-triton-server-image)
-
-
-# Installation
+    - [Step 1: System Prerequisites](#step-1-system-prerequisites)
+        - [1.1 Install Docker](#11-install-docker)
+        - [1.2 Install NVIDIA Container Toolkit](#12-install-nvidia-container-toolkit)
+    - [Step 2: NVIDIA NGC Authentication](#step-2-nvidia-ngc-authentication)
+        - [2.1 Get Your NGC API Key](#21-get-your-ngc-api-key)
+        - [2.2 Log in via Docker](#22-log-in-via-docker)
+    - [Step 3: Download Jina Embeddings v3 Model](#step-3-download-jina-embeddings-v3-model)
+    - [Step 4: Pull Triton Docker Image](#step-4-pull-triton-docker-image)
+    - [Step 5: Prepare Triton Model Repository](#step-5-prepare-triton-model-repository)
+        - [5.1 Move the ONNX Model](#51-move-the-onnx-model)
+        - [5.2 Create config.pbtxt](#52-create-configpbtxt)
+    - [Step 6: Launch Triton Inference Server](#step-6-launch-triton-inference-server)
+    - [Step 7: Manageable Service with systemd](#step-7-manageable-service-with-systemd)
+        - [7.1 Create the systemd Service File](#71-create-the-systemd-service-file)
+        - [7.2 Install and Manage the Service](#72-install-and-manage-the-service)
+        - [7.3 Controlling and Viewing Logs](#73-controlling-and-viewing-logs)
 
 ---
 
-## Step 1: System Prerequisites
+## Installation
 
-This section covers the base software required on your host machine to interact with NVIDIA GPUs inside Docker containers.
+This section guides you through setting up the Triton Inference Server with Jina Embeddings v3, optimized for NVIDIA GPUs using TensorRT.
 
-### 1.1 Install Docker
+---
+
+### Step 1: System Prerequisites
+
+Ensure your host machine is equipped with the necessary software to interact with NVIDIA GPUs inside Docker containers.
+
+#### 1.1 Install Docker
+
+Install Docker to manage containers for running the Triton Inference Server.
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y docker.io
 
-# Add your user to the docker group to run docker without sudo
-# NOTE: You must log out and log back in for this change to take effect.
+# Add your user to the docker group to run Docker without sudo
 sudo usermod -aG docker ${USER}
 
 echo "----------------------------------------------------"
@@ -34,9 +49,11 @@ echo "-> Or, you can start a new shell with: newgrp docker"
 echo "----------------------------------------------------"
 ```
 
-### 1.2 Install NVIDIA Container Toolkit
+**Note:** Log out and back in, or run `newgrp docker` to apply the group changes.
 
-This toolkit allows Docker containers to access your NVIDIA GPU.
+#### 1.2 Install NVIDIA Container Toolkit
+
+The NVIDIA Container Toolkit enables Docker containers to leverage NVIDIA GPUs.
 
 ```bash
 # Add the NVIDIA repository and key
@@ -56,39 +73,36 @@ sudo systemctl restart docker
 
 ---
 
-## Step 2: NVIDIA NGC Authentication
+### Step 2: NVIDIA NGC Authentication
 
-To download the pre-built Triton container, you need to authenticate with the NVIDIA NGC catalog.
+Authenticate with the NVIDIA NGC catalog to access the Triton Server container image.
 
-### 2.1 Get Your NGC API Key
+#### 2.1 Get Your NGC API Key
 
-1.  Go to the NVIDIA NGC website: **[https://ngc.nvidia.com](https://ngc.nvidia.com)**
-2.  Sign in or create a free account.
-3.  In the top-right corner, click your user name and select **"Setup"**.
-4.  On the Setup page, click **"Get API Key"** and then **"Generate API Key"**.
-5.  **IMPORTANT:** A long alphanumeric string will be displayed. This is your API key. Copy this key immediately and save it somewhere safe. You will not be able to see it again.
+1. Visit **[https://ngc.nvidia.com](https://ngc.nvidia.com)**.
+2. Sign in or create a free account.
+3. Click your username in the top-right corner and select **Setup**.
+4. Click **Get API Key** and then **Generate API Key**.
+5. Copy the long alphanumeric API key and store it securely. **Note:** You cannot retrieve it again after closing the page.
 
-### 2.2 Log in via Docker
+#### 2.2 Log in via Docker
 
-Use the API key to log in to the NVIDIA Container Registry (`nvcr.io`).
+Use the API key to authenticate with the NVIDIA Container Registry (`nvcr.io`).
 
 ```bash
 docker login nvcr.io
 ```
 
-The command will prompt you for a `Username` and a `Password`:
+- **Username:** Enter `$oauthtoken` (literal string).
+- **Password:** Paste your NGC API Key (it will not be visible when typed/pasted).
 
--   **Username:** Enter the literal string `$oauthtoken`
--   **Password:** Paste the **NGC API Key** you just generated. (Note: The password will be invisible as you type/paste it).
-
-You should see a `Login Succeeded` message.
+Upon success, you will see a `Login Succeeded` message.
 
 ---
 
+### Step 3: Download Jina Embeddings v3 Model
 
-## Step 3: Download the jina-v3-embeddings  
-
-We will download the model weights from Hugging Face and create directories to store model data and the final Triton repository.
+Download the Jina Embeddings v3 model weights from Hugging Face and set up directories for the model data.
 
 ```bash
 # Create directories on the host machine
@@ -107,17 +121,23 @@ huggingface-cli download jinaai/jina-embeddings-v3 \
   --local-dir ~/jina-v3-onnx
 ```
 
+---
 
-## Step-5: Pull triton docker 
+### Step 4: Pull Triton Docker Image
+
+Download the Triton Inference Server Docker image from NVIDIA's container registry.
+
 ```bash
 docker pull nvcr.io/nvidia/tritonserver:25.05-py3
 ```
 
-## Step 6: Prepare Triton Model Repository
-Triton expects a specific structure like this:
+---
 
-```bash
-Edit
+### Step 5: Prepare Triton Model Repository
+
+Triton requires a specific directory structure for the model repository:
+
+```
 ~/triton_repo/
 └── jina_embeddings_v3/
     ├── 1/
@@ -125,20 +145,25 @@ Edit
     └── config.pbtxt
 ```
 
-### 6.1 Move the ONNX model
+#### 5.1 Move the ONNX Model
+
+Copy the downloaded ONNX model files to the Triton model repository.
+
 ```bash
 mkdir -p ~/triton_repo/jina_embeddings_v3/1
 cp ~/jina-v3-onnx/onnx/model.onnx ~/triton_repo/jina_embeddings_v3/1/
 cp ~/jina-v3-onnx/onnx/model.onnx_data ~/triton_repo/jina_embeddings_v3/1/
 ```
-### 4.2 Create config.pbtxt
-Create the config file at: **~/triton_repo/jina_embeddings_v3/config.pbtxt**
+
+#### 5.2 Create config.pbtxt
+
+Create the configuration file for the Jina Embeddings v3 model.
 
 ```bash
 nano ~/triton_repo/jina_embeddings_v3/config.pbtxt
 ```
 
-copy and paste and save the following
+Copy and paste the following content, then save and exit (`Ctrl+X`, `Y`, `Enter`):
 
 ```
 name: "jina_embeddings_v3"
@@ -167,11 +192,17 @@ output [
   {
     name: "text_embeds"
     data_type: TYPE_FP32
-    dims: [-1,1024 ]  # Adjust based on model output
+    dims: [-1, 1024 ]
   }
 ]
 ```
-# Step 7: Launch Triton Inference Server
+
+---
+
+### Step 6: Launch Triton Inference Server
+
+Run the Triton Inference Server in a Docker container, mapping the model repository and exposing necessary ports.
+
 ```bash
 docker run -d --gpus=all --rm -it \
   --name triton_server \
@@ -181,3 +212,115 @@ docker run -d --gpus=all --rm -it \
   tritonserver --model-repository=/models
 ```
 
+---
+
+### Step 7: Manageable Service with systemd
+
+Set up a `systemd` service to manage the Triton Inference Server, ensuring it runs reliably and restarts automatically if needed.
+
+#### 7.1 Create the systemd Service File
+
+Create a `systemd` service file to manage the Triton server.
+
+```bash
+sudo nano /etc/systemd/system/jinav3embedder.service
+```
+
+Copy and paste the following template, replacing placeholders (`<your_username>`, `<full_path_to_your_project>`, `<your_conda_install_dir>`, `<your_conda_env_name>`) with your actual values.
+
+```ini
+[Unit]
+Description=Jina V3 Embedder Service
+After=network.target docker.service
+
+[Service]
+User=<your_username>
+Group=<your_username>
+WorkingDirectory=<full_path_to_your_project>
+Environment="PATH=/home/<your_username>/<your_conda_install_dir>/envs/<your_conda_env_name>/bin:/usr/bin:/bin"
+ExecStart=/bin/bash <full_path_to_your_project>/run.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Finding Placeholders:**
+- `<your_username>`: Run `whoami` to get your username.
+- `<full_path_to_your_project>`: Run `pwd` in your project directory (e.g., `~/Triton-Jina-v3-TRT`).
+- `<your_conda_install_dir>`: Typically `anaconda3` or `miniconda3` in your home directory.
+- `<your_conda_env_name>`: The name of your conda environment (e.g., `triton`).
+
+**Example Filled-Out File:**
+
+For a user `ansary`, project directory `/home/ansary/Triton-Jina-v3-TRT`, and conda environment `triton`, the file would look like:
+
+```ini
+[Unit]
+Description=Jina V3 Embedder Service
+After=network.target docker.service
+
+[Service]
+User=ansary
+Group=ansary
+WorkingDirectory=/home/ansary/Triton-Jina-v3-TRT
+Environment="PATH=/home/ansary/miniconda3/envs/triton/bin:/usr/bin:/bin"
+ExecStart=/bin/bash /home/ansary/Triton-Jina-v3-TRT/run.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Save and exit (`Ctrl+X`, `Y`, `Enter`).
+
+#### 7.2 Install and Manage the Service
+
+Use `systemctl` to manage the `jinav3embedder` service.
+
+1. **Reload the systemd daemon:**
+   ```bash
+   sudo systemctl daemon-reload
+   ```
+
+2. **Enable the service to start on boot:**
+   ```bash
+   sudo systemctl enable jinav3embedder.service
+   ```
+
+3. **Start the service immediately:**
+   ```bash
+   sudo systemctl start jinav3embedder.service
+   ```
+
+#### 7.3 Controlling and Viewing Logs
+
+Manage the service and monitor its logs with the following commands:
+
+- **Check the service status:**
+  ```bash
+  sudo systemctl status jinav3embedder.service
+  ```
+  Look for a green `active (running)` status to confirm the service is running correctly.
+
+- **Stop the service:**
+  ```bash
+  sudo systemctl stop jinav3embedder.service
+  ```
+
+- **Restart the service:**
+  ```bash
+  sudo systemctl restart jinav3embedder.service
+  ```
+
+- **View live logs for debugging:**
+  ```bash
+  sudo journalctl -u jinav3embedder.service -f
+  ```
+  Press `Ctrl+C` to exit the live log view.
+
+---
+
+This guide provides a comprehensive setup for running the Triton Inference Server with Jina Embeddings v3. Save this markdown file and execute the steps in order to deploy the service successfully.

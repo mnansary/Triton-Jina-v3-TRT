@@ -78,14 +78,21 @@ Upon success, you will see a `Login Succeeded` message.
 
 ---
 
-### Step 3: Download Jina Embeddings v3 Model
+### Step 3: Jina Embeddings v3 Model
 
-Download the Jina Embeddings v3 model weights from Hugging Face and set up directories for the model data.
+* Clone the repository 
+
+```bash
+git clone https://github.com/mnansary/Triton-Jina-v3-TRT.git
+```
+
+* Download the Jina Embeddings v3 model weights from Hugging Face and set up directories for the model data.
 
 ```bash
 # Create directories on the host machine
 mkdir ~/jinav3_repo
-
+# copy the taskid harcoder script
+cp hardcode_taskid.py ~/jinav3_repo/
 # Install the Hugging Face command-line tool
 pip install huggingface_hub
 
@@ -101,12 +108,124 @@ huggingface-cli download jinaai/jina-embeddings-v3 \
 
 ---
 
-### Step 4: Pull TensorRT Docker Image
+### Step 4: Inspect The model with TensortRT and Polygraphy and Convert
 
 Download the TensorRT Docker image from NVIDIA's container registry.
 
 ```bash
 docker pull nvcr.io/nvidia/tensorrt:25.05-py3
+docker run --gpus all -it --rm -v ~/jinav3_repo:/models nvcr.io/nvidia/tensorrt:25.05-py3
+# inside docker 
+python3 -m pip install onnx onnx_graphsurgeon onnxruntime
+polygraphy inspect model /models/onnx/model_fp16.onnx --mode=onnx
+```
+
+* passage model conversion
+
+```bash
+# In the TensorRT container
+# Step 1.1: Create the passage ONNX model
+python3 /models/hardcode_taskid.py \
+    --input /models/onnx/model_fp16.onnx \
+    --output /models/jina_passage.onnx \
+    --task_id 1
+
+# Step 1.2: Build the passage TensorRT engine
+polygraphy run /models/jina_passage.onnx \
+    --trt \
+    --save-engine /models/jina_passage.engine \
+    --trt-min-shapes input_ids:[1,1] attention_mask:[1,1] \
+    --trt-opt-shapes input_ids:[1,512] attention_mask:[1,512] \
+    --trt-max-shapes input_ids:[1,8192] attention_mask:[1,8192] \
+    --verbose
+```
+
+* query model creation 
+
+```bash 
+
+# In the TensorRT container
+# Step 1.1: Create the query ONNX model
+python3 /models/hardcode_taskid.py \
+    --input /models/onnx/model_fp16.onnx \
+    --output /models/jina_query.onnx \
+    --task_id 0
+
+# Step 1.2: Build the query TensorRT engine with a DYNAMIC BATCH profile
+polygraphy run /models/jina_query.onnx \
+    --trt \
+    --save-engine /models/jina_query.engine \
+    --trt-min-shapes input_ids:[1,1] attention_mask:[1,1] \
+    --trt-opt-shapes input_ids:[8,128] attention_mask:[8,128] \
+    --trt-max-shapes input_ids:[8,512] attention_mask:[8,512] \
+    --verbose
+```
+
+* exit docker
+```bash
+exit
+```
+
+### Step-5 Inference With Triton
+
+```bash
+# Create the main model repository directory
+mkdir -p ~/triton_repo
+
+# Create subdirectories for each of your two models
+mkdir -p ~/triton_repo/jina_query/1
+mkdir -p ~/triton_repo/jina_passage/1
+
+
+# On your host machine
+# Move the query engine
+mv ~/jinav3_repo/jina_query.engine ~/triton_repo/jina_query/1/model.plan
+cp configs/jina_query_config.pbtxt ~/triton_repo/jina_query/config.pbtxt
+
+# Move the passage engine
+mv ~/jinav3_repo/jina_passage.engine ~/triton_repo/jina_passage/1/model.plan
+cp configs/jina_passage_config.pbtxt ~/triton_repo/jina_passage/config.pbtxt
+```
+
+* after this the triton_repo should have the following structre: 
+
+```bash
+triton_repo/
+├── jina_passage/
+│   ├── 1/
+│   │   └── model.plan
+│   └── config.pbtxt
+└── jina_query/
+    ├── 1/
+    │   └── model.plan
+    └── config.pbtxt
+```
+
+* pull the trition server 
+
+```bash
+docker pull nvcr.io/nvidia/tritonserver:25.05-py3
+```
+
+* run
+
+```bash
+docker run --gpus all --rm -d --name jinatriton\
+  -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+  -v ~/triton_repo:/models \
+  nvcr.io/nvidia/tritonserver:25.05-py3 \
+  tritonserver --model-repository=/models
+```
+
+### Step-6: Service verification
+
+```bash
+conda create -n jinatriton python=3.10
+conda activate jinatriton
+# Install the Triton client, ONNX Runtime for GPU, transformers, and torch
+pip install tritonclient[http] onnxruntime-gpu transformers torch
+# Jina's ONNX export uses an older numpy, so let's be safe
+pip install 'numpy<2'
 ```
 
 ---

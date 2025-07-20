@@ -226,6 +226,10 @@ conda activate jinatriton
 pip install tritonclient[http] onnxruntime-gpu transformers torch
 # Jina's ONNX export uses an older numpy, so let's be safe
 pip install 'numpy<2'
+
+# test with original 
+
+python validate_triton.py
 ```
 
 ---
